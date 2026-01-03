@@ -3,3 +3,17 @@ node_modules
 .env
 
 /src/generated/prisma
+
+# mac OS files
+.DS_Store
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# Runtime data
+pids
+*.pid
+
