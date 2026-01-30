@@ -4,7 +4,7 @@ const ROUTES =[
     // 'dashboard' ,
     'products' ,
     'inventory' ,
-    // 'clients' ,
+    'clients' ,
     // 'orders' ,
     // 'users' ,
     // 'configurations' ,

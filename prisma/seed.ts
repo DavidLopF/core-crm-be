@@ -24,6 +24,7 @@ async function main() {
   await prisma.inventoryStock.deleteMany({});
   await prisma.productVariant.deleteMany({});
   await prisma.product.deleteMany({});
+  await prisma.category.deleteMany({});
   await prisma.client.deleteMany({});
   await prisma.warehouse.deleteMany({});
   await prisma.orderStatus.deleteMany({});
@@ -74,7 +75,53 @@ async function main() {
   console.log(`✅ ${clients.length} clientes creados`);
 
   // ======================================
-  // 2. CREAR PRODUCTOS Y VARIANTES
+  // 2. CREAR CATEGORÍAS
+  // ======================================
+  console.log('🏷️  Creando categorías...');
+  
+  const categorias = await Promise.all([
+    prisma.category.create({
+      data: {
+        code: 'ELECTRONICA',
+        name: 'Electrónica',
+        description: 'Productos electrónicos y tecnología',
+        sortOrder: 1,
+        isActive: true,
+      },
+    }),
+    prisma.category.create({
+      data: {
+        code: 'ROPA',
+        name: 'Ropa',
+        description: 'Ropa y textiles',
+        sortOrder: 2,
+        isActive: true,
+      },
+    }),
+    prisma.category.create({
+      data: {
+        code: 'CALZADO',
+        name: 'Calzado',
+        description: 'Zapatos y calzado en general',
+        sortOrder: 3,
+        isActive: true,
+      },
+    }),
+    prisma.category.create({
+      data: {
+        code: 'ACCESORIOS',
+        name: 'Accesorios',
+        description: 'Accesorios diversos',
+        sortOrder: 4,
+        isActive: true,
+      },
+    }),
+  ]);
+
+  console.log(`✅ ${categorias.length} categorías creadas`);
+
+  // ======================================
+  // 3. CREAR PRODUCTOS Y VARIANTES
   // ======================================
   console.log('📦 Creando productos y variantes...');
 
@@ -83,6 +130,7 @@ async function main() {
     data: {
       name: 'Laptop Dell XPS 15',
       description: 'Laptop profesional de alto rendimiento con pantalla 4K',
+      categoryId: categorias[0].id, // Electrónica
       defaultPrice: 28999.99,
       currency: 'MXN',
       isActive: true,
@@ -111,6 +159,7 @@ async function main() {
     data: {
       name: 'Mouse Logitech MX Master 3',
       description: 'Mouse ergonómico inalámbrico para profesionales',
+      categoryId: categorias[3].id, // Accesorios
       defaultPrice: 1899.00,
       currency: 'MXN',
       isActive: true,
@@ -139,6 +188,7 @@ async function main() {
     data: {
       name: 'Teclado Mecánico Keychron K2',
       description: 'Teclado mecánico compacto con switches intercambiables',
+      categoryId: categorias[3].id, // Accesorios
       defaultPrice: 2499.00,
       currency: 'MXN',
       isActive: true,
@@ -173,6 +223,7 @@ async function main() {
     data: {
       name: 'Monitor LG UltraWide 34"',
       description: 'Monitor ultra ancho curvo para mayor productividad',
+      categoryId: categorias[0].id, // Electrónica
       defaultPrice: 12999.00,
       currency: 'MXN',
       isActive: true,
@@ -201,6 +252,7 @@ async function main() {
     data: {
       name: 'Webcam Logitech C920',
       description: 'Cámara web Full HD 1080p con micrófono integrado',
+      categoryId: categorias[0].id, // Electrónica
       defaultPrice: 1299.00,
       currency: 'MXN',
       isActive: true,
@@ -593,6 +645,7 @@ async function main() {
   console.log('\n📊 RESUMEN DEL SEED:');
   console.log('='.repeat(50));
   console.log(`✅ Clientes: ${clients.length}`);
+  console.log(`✅ Categorías: ${categorias.length}`);
   console.log(`✅ Productos: 5`);
   console.log(`✅ Variantes: ${allVariants.length}`);
   console.log(`✅ Almacenes: 2`);

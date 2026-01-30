@@ -1,10 +1,19 @@
 import { prisma } from '../config/prisma';
+import {
+  InventorySummaryDto,
+  InventoryItemDto,
+  InventoryQueryParams,
+  InventoryDetailDto,
+  UpdateStockDto,
+  StockUpdateResultDto,
+} from '../dtos';
+import { PaginatedResponse } from '../types';
 
 class InventoryService {
   /**
    * Obtener resumen del inventario (métricas)
    */
-  async getInventorySummary() {
+  async getInventorySummary(): Promise<InventorySummaryDto> {
     // Total de productos activos
     const totalProducts = await prisma.product.count({
       where: { isActive: true },
@@ -46,13 +55,9 @@ class InventoryService {
   /**
    * Obtener lista de productos con inventario
    */
-  async getInventoryList(filters?: {
-    search?: string;
-    category?: string;
-    stockStatus?: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
-    page?: number;
-    limit?: number;
-  }) {
+  async getInventoryList(
+    filters?: InventoryQueryParams
+  ): Promise<PaginatedResponse<InventoryItemDto>> {
     const page = filters?.page || 1;
     const limit = filters?.limit || 10;
     const skip = (page - 1) * limit;
@@ -76,6 +81,7 @@ class InventoryService {
     const products = await prisma.product.findMany({
       where: whereClause,
       include: {
+        category: true,
         variants: {
           where: { isActive: true },
           include: {
@@ -117,7 +123,7 @@ class InventoryService {
           variantName: variant.variantName,
           sku: variant.sku,
           barcode: variant.barcode,
-          category: 'Sin categoría', // Puedes agregar categorías al schema después
+          category: product.category?.name || 'Sin categoría',
           stock: totalStock,
           stockStatus,
           price: Number(product.defaultPrice),
@@ -148,6 +154,7 @@ class InventoryService {
     const totalPages = Math.ceil(totalVariants / limit);
 
     return {
+      success: true,
       data: filteredItems,
       pagination: {
         page,
@@ -163,7 +170,7 @@ class InventoryService {
   /**
    * Obtener detalle de inventario por variante
    */
-  async getInventoryDetail(variantId: number) {
+  async getInventoryDetail(variantId: number): Promise<InventoryDetailDto | null> {
     const variant = await prisma.productVariant.findUnique({
       where: { id: variantId },
       include: {
@@ -213,13 +220,8 @@ class InventoryService {
   /**
    * Actualizar stock de una variante en un almacén
    */
-  async updateStock(data: {
-    variantId: number;
-    warehouseId: number;
-    qtyOnHand?: number;
-    qtyReserved?: number;
-  }) {
-    return await prisma.inventoryStock.upsert({
+  async updateStock(data: UpdateStockDto): Promise<StockUpdateResultDto> {
+    const result = await prisma.inventoryStock.upsert({
       where: {
         variantId_warehouseId: {
           variantId: data.variantId,
@@ -237,12 +239,21 @@ class InventoryService {
         qtyReserved: data.qtyReserved || 0,
       },
     });
+
+    return {
+      id: result.id,
+      variantId: result.variantId,
+      warehouseId: result.warehouseId,
+      qtyOnHand: result.qtyOnHand,
+      qtyReserved: result.qtyReserved,
+      updatedAt: result.updatedAt,
+    };
   }
 
   /**
    * Obtener productos con stock bajo
    */
-  async getLowStockProducts(threshold: number = 20) {
+  async getLowStockProducts(threshold: number = 20): Promise<InventoryItemDto[]> {
     const result = await this.getInventoryList();
     return result.data.filter((item) => item.stock > 0 && item.stock <= threshold);
   }

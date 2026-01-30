@@ -30,17 +30,34 @@ model Client {
   orders    Order[]
 }
 
+model Category {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(40)  // ROPA, CALZADO, ACCESORIOS, ELECTRONICA
+  name        String   @db.VarChar(120)         // Ropa, Calzado, Accesorios, Electrónica
+  description String?  @db.Text
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products    Product[]
+}
+
 model Product {
   id           Int      @id @default(autoincrement())
   name         String   @db.VarChar(255)
   description  String?  @db.Text
+  categoryId   Int?
   defaultPrice Decimal  @db.Decimal(18, 4)
   currency     String?  @db.VarChar(10)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  category     Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   variants     ProductVariant[]
+
+  @@index([categoryId])
 }
 
 model ProductVariant {

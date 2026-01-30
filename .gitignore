@@ -17,3 +17,6 @@ pnpm-debug.log*
 pids
 *.pid
 
+logs
+
+logs/*.log

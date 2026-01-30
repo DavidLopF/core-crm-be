@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import InventoryService from '../services/inventory.service';
+import { ApiResponse, ErrorResponse } from '../types';
+import { InventorySummaryDto, InventoryItemDto } from '../dtos';
 
 const router = Router();
 
@@ -11,16 +13,19 @@ router.get('/summary', async (req: Request, res: Response) => {
   try {
     const summary = await InventoryService.getInventorySummary();
     
-    res.json({
+    const response: ApiResponse<InventorySummaryDto> = {
       success: true,
       data: summary,
-    });
+    };
+    
+    res.json(response);
   } catch (error) {
-    res.status(500).json({
+    const errorResponse: ErrorResponse = {
       success: false,
       message: 'Error al obtener resumen del inventario',
       error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    };
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -44,17 +49,14 @@ router.get('/', async (req: Request, res: Response) => {
       limit: limit ? parseInt(limit as string) : 10,
     });
 
-    res.json({
-      success: true,
-      data: result.data,
-      pagination: result.pagination,
-    });
+    res.json(result);
   } catch (error) {
-    res.status(500).json({
+    const errorResponse: ErrorResponse = {
       success: false,
       message: 'Error al obtener inventario',
       error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    };
+    res.status(500).json(errorResponse);
   }
 });
 
