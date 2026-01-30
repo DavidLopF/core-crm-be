@@ -5,7 +5,7 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../src/generated/prisma"
 }
 
@@ -13,11 +13,228 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  firebaseuid String   @unique
+/**
+ * Nota:
+ * - Los estados de pedidos se manejan en BD con OrderStatus (no enum).
+ * - El precio por unidad (OrderItem.unitPrice) es editable mientras el pedido esté en COTIZADO (regla en backend).
+ */
+
+model Client {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  document  String?  @db.VarChar(50)
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-} 
+
+  orders    Order[]
+}
+
+model Product {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(255)
+  description  String?  @db.Text
+  defaultPrice Decimal  @db.Decimal(18, 4)
+  currency     String?  @db.VarChar(10)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  variants     ProductVariant[]
+}
+
+model ProductVariant {
+  id          Int      @id @default(autoincrement())
+  productId   Int
+  sku         String   @unique @db.VarChar(80)
+  barcode     String?  @db.VarChar(80)
+  variantName String?  @db.VarChar(255)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  stocks      InventoryStock[]
+  orderItems  OrderItem[]
+
+  @@index([productId])
+}
+
+model Warehouse {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stocks    InventoryStock[]
+}
+
+model InventoryStock {
+  id          Int      @id @default(autoincrement())
+  variantId   Int
+  warehouseId Int
+
+  qtyOnHand   Int      @default(0)
+  qtyReserved Int      @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([variantId, warehouseId])
+  @@index([variantId])
+  @@index([warehouseId])
+}
+
+/**
+ * Status configurable en BD (para Kanban).
+ */
+model OrderStatus {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique @db.VarChar(40)  // COTIZADO, TRANSMITIDO, EN_CURSO, ENVIADO, CANCELADO
+  label     String   @db.VarChar(80)          // Cotizado, Transmitido, etc.
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
+}
+
+/**
+ * Pedido / Cotización
+ */
+model Order {
+  id         Int      @id @default(autoincrement())
+  code       String   @unique @db.VarChar(40)
+  clientId   Int
+  statusId   Int
+
+  currency   String?  @db.VarChar(10)
+  subtotal   Decimal  @default(0) @db.Decimal(18, 4)
+  total      Decimal  @default(0) @db.Decimal(18, 4)
+  notes      String?  @db.Text
+
+  // Auditoría opcional (quién crea / actualiza)
+  createdByUserId Int?
+  updatedByUserId Int?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  status     OrderStatus @relation(fields: [statusId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  items      OrderItem[]
+
+  createdBy  User? @relation("order_created_by", fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  updatedBy  User? @relation("order_updated_by", fields: [updatedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([clientId])
+  @@index([statusId])
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+}
+
+model OrderItem {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  variantId Int
+
+  qty       Int      @default(1)
+
+  // Precio por unidad editable mientras el pedido esté en estado "COTIZADO" (regla en backend)
+  unitPrice Decimal  @db.Decimal(18, 4)
+
+  // Referencia opcional (precio de lista/default al momento)
+  listPrice Decimal? @db.Decimal(18, 4)
+
+  currency  String?  @db.VarChar(10)
+  lineTotal Decimal  @default(0) @db.Decimal(18, 4)
+
+  description String? @db.VarChar(255)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order     Order          @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([orderId])
+  @@index([variantId])
+}
+
+/* =========================================================
+   Seguridad / Usuarios / Roles / Permisos por módulo (RBAC)
+   ========================================================= */
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique @db.VarChar(255)
+  fullName     String   @db.VarChar(255)
+  passwordHash String   @db.VarChar(255)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  roles        UserRole[]
+
+  ordersCreated Order[] @relation("order_created_by")
+  ordersUpdated Order[] @relation("order_updated_by")
+}
+
+model Role {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique @db.VarChar(40) // ADMIN, VENDEDOR, BODEGA...
+  name      String   @db.VarChar(80)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users      UserRole[]
+  permissions RolePermission[]
+}
+
+model UserRole {
+  userId    Int
+  roleId    Int
+  createdAt DateTime @default(now())
+
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  role      Role @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model Module {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique @db.VarChar(40) // DASHBOARD, INVENTARIO, PEDIDOS, CLIENTES, CONFIG
+  name      String   @db.VarChar(80)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+
+  permissions RolePermission[]
+}
+
+model RolePermission {
+  roleId    Int
+  moduleId  Int
+
+  canView   Boolean  @default(false)
+  canCreate Boolean  @default(false)
+  canEdit   Boolean  @default(false)
+  canDelete Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  role      Role   @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  module    Module @relation(fields: [moduleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([roleId, moduleId])
+  @@index([moduleId])
+}

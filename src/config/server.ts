@@ -16,7 +16,7 @@ class Server {
     this.app = express();
     this.port = process.env.PORT || 3000;
     this.middlewares();
-
+    this.routes();
     this.app.get("/", (req, res) => {
       res.status(200).json({
         message: "API is running",
@@ -41,8 +41,10 @@ class Server {
   private routes(): void {
     ROUTES.forEach(async (route) => {
       const routeModule = await import(
-        `../routes/${getSingular(route)}.routes`
+        `../controllers/${getSingular(route)}.controller`
       );
+      console.log(colors.cyan(`Loading route: ${route}`));
+
 
       if (process.env.ENVIROMENT == "DEV") {
       }

@@ -1,7 +1,12 @@
 const  ROUTE_PREFIX = '/api/';
 
 const ROUTES =[
-    'auth'
+    // 'dashboard' ,
+    'products' ,
+    // 'clients' ,
+    // 'orders' ,
+    // 'users' ,
+    // 'configurations' ,
 ];
 
 export { ROUTE_PREFIX, ROUTES };
