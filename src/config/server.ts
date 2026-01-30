@@ -16,7 +16,6 @@ class Server {
     this.app = express();
     this.port = process.env.PORT || 3000;
     this.middlewares();
-    this.routes();
     this.app.get("/", (req, res) => {
       res.status(200).json({
         message: "API is running",
@@ -26,7 +25,8 @@ class Server {
   /**
    * Method to start the server
    */
-  listen(): void {
+  async listen(): Promise<void> {
+    await this.routes();
     this.app.listen(this.port, () => {
       success(`Server running on port ${this.port}`);
     });
@@ -38,19 +38,23 @@ class Server {
     this.app.use(express.json() as RequestHandler);
   }
 
-  private routes(): void {
-    ROUTES.forEach(async (route) => {
-      const routeModule = await import(
-        `../controllers/${getSingular(route)}.controller`
-      );
-      console.log(colors.cyan(`Loading route: ${route}`));
+  private async routes(): Promise<void> {
+    for (const route of ROUTES) {
+      try {
+        const routeModule = await import(
+          `../controllers/${getSingular(route)}.controller`
+        );
+        console.log(colors.cyan(`Loading route: ${route}`));
 
+        if (process.env.ENVIROMENT == "DEV") {
+        }
 
-      if (process.env.ENVIROMENT == "DEV") {
+        this.app.use(`${ROUTE_PREFIX}${route}`, routeModule.default);
+      } catch (error) {
+        console.log(colors.red(`Error loading route: ${route}`));
+        console.error(error);
       }
-
-      this.app.use(`${ROUTE_PREFIX}/${route}`, routeModule.default);
-    });
+    }
   }
 }
 
