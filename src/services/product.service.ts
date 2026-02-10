@@ -1,5 +1,13 @@
 import { prisma } from "../config/prisma";
-import { ProductDetailDto, ProductListItemDto, CategoryDto, ProductFiltersDto, PaginatedProductsDto } from "../dtos";
+import { 
+  ProductDetailDto, 
+  ProductListItemDto, 
+  CategoryDto, 
+  ProductFiltersDto, 
+  PaginatedProductsDto,
+  CreateProductDto,
+  CreateProductResponseDto
+} from "../dtos";
 
 class ProductService {
 
@@ -58,6 +66,7 @@ class ProductService {
       where: { id: productId },
       include: {
         category: true,
+
         variants: {
           where: { isActive: true },
           include: {
@@ -281,6 +290,113 @@ class ProductService {
   async getAllProducts(): Promise<ProductListItemDto[]> {
     const result = await this.getProducts({ isActive: true, limit: 1000 });
     return result.data;
+  }
+
+  /**
+   * Crear un nuevo producto con variantes y stock inicial
+   */
+  async createProduct(data: CreateProductDto): Promise<CreateProductResponseDto> {
+    // Validar que la categoría exista
+    const category = await prisma.category.findUnique({
+      where: { id: data.categoryId },
+    });
+
+    if (!category) {
+      throw new Error(`Categoría con ID ${data.categoryId} no encontrada`);
+    }
+
+    // Validar que el SKU no exista ya
+    const variantSkus = data.variants.map(v => v.sku).filter((sku): sku is string => sku !== undefined);
+    const existingSku = await prisma.productVariant.findFirst({
+      where: {
+        OR: [
+          { sku: data.sku },
+          ...(variantSkus.length > 0 ? [{ sku: { in: variantSkus } }] : []),
+        ],
+      },
+    });
+
+    if (existingSku) {
+      throw new Error(`El SKU "${existingSku.sku}" ya existe en el sistema`);
+    }
+
+    // Obtener almacén por defecto si no se especifica
+    const defaultWarehouse = await prisma.warehouse.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'asc' },
+    });
+
+    if (!defaultWarehouse) {
+      throw new Error('No hay almacenes activos en el sistema');
+    }
+
+    // Crear producto con variantes y stock en una transacción
+    const product = await prisma.$transaction(async (tx) => {
+      // 1. Crear el producto
+      const productPrice = data.price ?? data.defaultPrice ?? 0;
+      
+      const newProduct = await tx.product.create({
+        data: {
+          name: data.name,
+          description: data.description || null,
+          categoryId: data.categoryId,
+          defaultPrice: productPrice,
+          currency: data.currency || 'MXN',
+          isActive: true,
+        },
+      });
+
+      // 2. Crear variantes con stock
+      for (let i = 0; i < data.variants.length; i++) {
+        const variant = data.variants[i];
+        const warehouseId = variant.warehouseId || defaultWarehouse.id;
+        
+        // Determinar SKU de la variante
+        const variantSku = variant.sku || `${data.sku}-${i + 1}`;
+        
+        // Determinar nombre de la variante
+        const variantName = variant.variantName || 
+          (variant.variantType && variant.variantValue 
+            ? `${variant.variantType}: ${variant.variantValue}` 
+            : `Variante ${i + 1}`);
+        
+        // Determinar stock inicial
+        const initialStock = variant.initialStock ?? variant.stock ?? 0;
+
+        // Crear variante
+        const newVariant = await tx.productVariant.create({
+          data: {
+            productId: newProduct.id,
+            sku: variantSku,
+            barcode: variant.barcode || null,
+            variantName: variantName,
+            isActive: true,
+          },
+        });
+
+        // Crear stock inicial
+        await tx.inventoryStock.create({
+          data: {
+            variantId: newVariant.id,
+            warehouseId: warehouseId,
+            qtyOnHand: initialStock,
+            qtyReserved: 0,
+          },
+        });
+      }
+
+      return newProduct;
+    });
+
+    return {
+      id: product.id,
+      name: product.name,
+      sku: data.sku,
+      category: category.name,
+      price: Number(product.defaultPrice),
+      variantsCreated: data.variants.length,
+      message: `Producto "${product.name}" creado exitosamente con ${data.variants.length} variante(s)`,
+    };
   }
 }
 

@@ -99,3 +99,50 @@ export interface CategoryDto {
   sortOrder: number;
   isActive: boolean;
 }
+
+// ============================================
+// DTOs para CREAR productos
+// ============================================
+
+/**
+ * DTO para crear una variante de producto con stock inicial
+ */
+export interface CreateProductVariantDto {
+  sku?: string; // Opcional - se puede generar automáticamente
+  barcode?: string;
+  variantType?: string; // Ej: "Talla", "Color", "Tamaño"
+  variantValue?: string; // Ej: "M", "Rojo", "15x5mm"
+  variantName?: string; // Alternativa: "Color: Verde" (ya formateado)
+  initialStock?: number;
+  stock?: number; // Alternativa a initialStock
+  warehouseId?: number; // Si no se especifica, usar almacén por defecto
+}
+
+/**
+ * DTO para crear un nuevo producto
+ */
+export interface CreateProductDto {
+  name: string;
+  description?: string;
+  sku: string; // SKU principal/base del producto
+  imageUrl?: string;
+  categoryId: number;
+  price?: number; // Precio de venta
+  defaultPrice?: number; // Alternativa a price
+  cost?: number; // Costo (opcional)
+  currency?: string; // Default: MXN
+  variants: CreateProductVariantDto[];
+}
+
+/**
+ * Respuesta al crear un producto
+ */
+export interface CreateProductResponseDto {
+  id: number;
+  name: string;
+  sku: string;
+  category: string;
+  price: number;
+  variantsCreated: number;
+  message: string;
+}
