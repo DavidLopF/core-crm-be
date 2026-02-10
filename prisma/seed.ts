@@ -2,6 +2,9 @@ import 'dotenv/config';
 import { PrismaClient } from '../src/generated/prisma';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import * as XLSX from 'xlsx';
+import * as path from 'path';
+import * as fs from 'fs';
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -121,156 +124,121 @@ async function main() {
   console.log(`✅ ${categorias.length} categorías creadas`);
 
   // ======================================
-  // 3. CREAR PRODUCTOS Y VARIANTES
+  // 2.5. IMPORTAR PRODUCTOS DESDE EXCEL
   // ======================================
-  console.log('📦 Creando productos y variantes...');
+  console.log('\n📦 Importando productos desde Excel...');
+  
+  const excelFilePath = path.join(__dirname, '../data/productos.xlsx');
+  
+  if (fs.existsSync(excelFilePath)) {
+    console.log(`📖 Leyendo archivo: ${excelFilePath}`);
+    
+    const workbook = XLSX.readFile(excelFilePath);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    
+    // Convertir a JSON
+    const rawData: any[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+    // La primera fila tiene los encabezados
+    const headers = rawData[0];
+    
+    // Los datos empiezan desde la fila 2
+    const dataRows = rawData.slice(1);
+    
+    // Convertir las filas de datos a objetos
+    const productRows = dataRows.map(row => {
+      const obj: any = {};
+      headers.forEach((header: string, index: number) => {
+        if (header) {
+          obj[header] = row[index];
+        }
+      });
+      return obj;
+    }).filter(row => {
+      // Filtrar filas vacías
+      return row['Código Productos'] || row['DESCRIPTION'];
+    });
+    
+    console.log(`✅ Filas válidas para procesar: ${productRows.length}`);
+    
+    // Buscar categoría ACCESORIOS
+    const categoriaAccesorios = categorias.find(c => c.code === 'ACCESORIOS');
+    
+    let productsCreated = 0;
+    let productsSkipped = 0;
+    
+    for (const row of productRows) {
+      try {
+        const sku = row['Código Productos'] || `PROD-${productsCreated + 1}`;
+        const description = row['DESCRIPTION'] || 'Sin descripción';
+        const material = row['MATERIAL'] || '';
+        const color = row['COLOR'] || '';
+        const size = row['SIZE'] || '';
+        const cajasQty = parseFloat(String(row['CAJA'] || 0)) || 0;
+        const unitsPerBox = parseInt(String(row['CANTIDA X CAJA'] || 1)) || 1;
+        const packagingUnit = row['UNIDAD DE EMPAQUE'] || '';
+        
+        // Validar datos mínimos
+        if (!sku || !description || description === 'Sin descripción') {
+          productsSkipped++;
+          continue;
+        }
+        
+        // Verificar si ya existe
+        const existingVariant = await prisma.productVariant.findUnique({
+          where: { sku: String(sku) }
+        });
+        
+        if (existingVariant) {
+          productsSkipped++;
+          continue;
+        }
+        
+        // Crear nombre del producto
+        let productName = description;
+        if (material) productName += ` - ${material}`;
+        if (color) productName += ` - ${color}`;
+        
+        // Crear producto y variante
+        await prisma.product.create({
+          data: {
+            name: productName,
+            description: `Material: ${material}
+Color: ${color}
+Tamaño: ${size}
+Unidades por caja: ${unitsPerBox}
+Empaque: ${packagingUnit}`,
+            categoryId: categoriaAccesorios?.id || null,
+            defaultPrice: cajasQty > 0 ? cajasQty : 0,
+            currency: 'MXN',
+            isActive: true,
+            variants: {
+              create: {
+                sku: String(sku),
+                barcode: String(sku),
+                variantName: size ? `${size}` : undefined,
+                isActive: true,
+              }
+            }
+          }
+        });
+        
+        productsCreated++;
+      } catch (error: any) {
+        console.error(`⚠️  Error en producto: ${error.message}`);
+        productsSkipped++;
+      }
+    }
+    
+    console.log(`✅ Productos importados desde Excel: ${productsCreated}`);
+    console.log(`⏭️  Productos saltados: ${productsSkipped}`);
+  } else {
+    console.log('⚠️  No se encontró archivo Excel en /data/productos.xlsx');
+    console.log('   Se omitirá la importación de productos desde Excel');
+  }
 
-  // Producto 1: Laptop
-  const laptop = await prisma.product.create({
-    data: {
-      name: 'Laptop Dell XPS 15',
-      description: 'Laptop profesional de alto rendimiento con pantalla 4K',
-      categoryId: categorias[0].id, // Electrónica
-      defaultPrice: 28999.99,
-      currency: 'MXN',
-      isActive: true,
-      variants: {
-        create: [
-          {
-            sku: 'DELL-XPS15-16GB-512',
-            barcode: '7501234567890',
-            variantName: '16GB RAM / 512GB SSD',
-            isActive: true,
-          },
-          {
-            sku: 'DELL-XPS15-32GB-1TB',
-            barcode: '7501234567891',
-            variantName: '32GB RAM / 1TB SSD',
-            isActive: true,
-          },
-        ],
-      },
-    },
-    include: { variants: true },
-  });
-
-  // Producto 2: Mouse
-  const mouse = await prisma.product.create({
-    data: {
-      name: 'Mouse Logitech MX Master 3',
-      description: 'Mouse ergonómico inalámbrico para profesionales',
-      categoryId: categorias[3].id, // Accesorios
-      defaultPrice: 1899.00,
-      currency: 'MXN',
-      isActive: true,
-      variants: {
-        create: [
-          {
-            sku: 'LOGI-MXM3-BLACK',
-            barcode: '7501234567892',
-            variantName: 'Negro',
-            isActive: true,
-          },
-          {
-            sku: 'LOGI-MXM3-GRAY',
-            barcode: '7501234567893',
-            variantName: 'Gris',
-            isActive: true,
-          },
-        ],
-      },
-    },
-    include: { variants: true },
-  });
-
-  // Producto 3: Teclado
-  const teclado = await prisma.product.create({
-    data: {
-      name: 'Teclado Mecánico Keychron K2',
-      description: 'Teclado mecánico compacto con switches intercambiables',
-      categoryId: categorias[3].id, // Accesorios
-      defaultPrice: 2499.00,
-      currency: 'MXN',
-      isActive: true,
-      variants: {
-        create: [
-          {
-            sku: 'KEY-K2-RED-RGB',
-            barcode: '7501234567894',
-            variantName: 'Red Switches / RGB',
-            isActive: true,
-          },
-          {
-            sku: 'KEY-K2-BLUE-RGB',
-            barcode: '7501234567895',
-            variantName: 'Blue Switches / RGB',
-            isActive: true,
-          },
-          {
-            sku: 'KEY-K2-BROWN-WHITE',
-            barcode: '7501234567896',
-            variantName: 'Brown Switches / White LED',
-            isActive: true,
-          },
-        ],
-      },
-    },
-    include: { variants: true },
-  });
-
-  // Producto 4: Monitor
-  const monitor = await prisma.product.create({
-    data: {
-      name: 'Monitor LG UltraWide 34"',
-      description: 'Monitor ultra ancho curvo para mayor productividad',
-      categoryId: categorias[0].id, // Electrónica
-      defaultPrice: 12999.00,
-      currency: 'MXN',
-      isActive: true,
-      variants: {
-        create: [
-          {
-            sku: 'LG-UW34-2K',
-            barcode: '7501234567897',
-            variantName: '2K 75Hz',
-            isActive: true,
-          },
-          {
-            sku: 'LG-UW34-4K',
-            barcode: '7501234567898',
-            variantName: '4K 60Hz',
-            isActive: true,
-          },
-        ],
-      },
-    },
-    include: { variants: true },
-  });
-
-  // Producto 5: Webcam
-  const webcam = await prisma.product.create({
-    data: {
-      name: 'Webcam Logitech C920',
-      description: 'Cámara web Full HD 1080p con micrófono integrado',
-      categoryId: categorias[0].id, // Electrónica
-      defaultPrice: 1299.00,
-      currency: 'MXN',
-      isActive: true,
-      variants: {
-        create: [
-          {
-            sku: 'LOGI-C920-STD',
-            barcode: '7501234567899',
-            variantName: 'Estándar',
-            isActive: true,
-          },
-        ],
-      },
-    },
-    include: { variants: true },
-  });
-
-  console.log('✅ 5 productos creados con sus variantes');
+  
 
   // ======================================
   // 3. CREAR ALMACENES
@@ -375,269 +343,54 @@ async function main() {
   console.log('✅ Estados de pedidos creados');
 
   // ======================================
-  // 6. CREAR PEDIDOS CON HISTORIAL DE PRECIOS
+  // 6. CREAR PEDIDOS (COMENTADO - DESCOMENTAR CUANDO TENGAS PRODUCTOS ESPECÍFICOS)
   // ======================================
+  console.log('⏭️  Creación de pedidos omitida (activar manualmente si es necesario)');
+  
+  /*
+  // NOTA: Esta sección está comentada porque hace referencia a productos específicos
+  // que no están en el Excel. Si deseas crear pedidos de ejemplo, debes:
+  // 1. Obtener las variantes reales desde la BD
+  // 2. Usar los SKUs correctos de tu Excel
+  
   console.log('🛒 Creando pedidos con historial de precios por cliente...');
 
-  // Pedido 1: Cliente Comercial López - Laptops con precio preferencial
-  const order1 = await prisma.order.create({
-    data: {
-      code: 'PED-2025-001',
-      clientId: clients[0].id,
-      statusId: estados[0].id, // COTIZADO
-      currency: 'MXN',
-      notes: 'Cliente preferencial - descuento aplicado',
-      items: {
-        create: [
-          {
-            variantId: laptop.variants[0].id, // 16GB/512GB
-            qty: 5,
-            unitPrice: 26999.99, // Precio preferencial (descuento del precio default 28999.99)
-            listPrice: 28999.99,
-            currency: 'MXN',
-            lineTotal: 134999.95,
-            description: 'Laptop Dell XPS 15 - 16GB RAM / 512GB SSD',
-          },
-          {
-            variantId: mouse.variants[0].id,
-            qty: 5,
-            unitPrice: 1699.00, // Precio preferencial
-            listPrice: 1899.00,
-            currency: 'MXN',
-            lineTotal: 8495.00,
-            description: 'Mouse Logitech MX Master 3 - Negro',
-          },
-        ],
+  // Ejemplo de cómo obtener variantes para crear pedidos:
+  const variantesEjemplo = await prisma.productVariant.findMany({
+    take: 5,
+    include: { product: true }
+  });
+
+  if (variantesEjemplo.length >= 3) {
+    const order1 = await prisma.order.create({
+      data: {
+        code: 'PED-2025-001',
+        clientId: clients[0].id,
+        statusId: estados[0].id,
+        currency: 'MXN',
+        notes: 'Pedido de ejemplo',
+        items: {
+          create: [
+            {
+              variantId: variantesEjemplo[0].id,
+              qty: 5,
+              unitPrice: 100,
+              listPrice: 120,
+              currency: 'MXN',
+              lineTotal: 500,
+              description: variantesEjemplo[0].product.name,
+            },
+          ],
+        },
       },
-    },
-  });
-
-  // Actualizar totales del pedido 1
-  await prisma.order.update({
-    where: { id: order1.id },
-    data: {
-      subtotal: 143494.95,
-      total: 143494.95,
-    },
-  });
-
-  // Pedido 2: Distribuidora García - Pedido grande con mejores precios
-  const order2 = await prisma.order.create({
-    data: {
-      code: 'PED-2025-002',
-      clientId: clients[1].id,
-      statusId: estados[1].id, // TRANSMITIDO
-      currency: 'MXN',
-      notes: 'Pedido mayorista - precio especial',
-      items: {
-        create: [
-          {
-            variantId: teclado.variants[0].id,
-            qty: 20,
-            unitPrice: 2199.00, // Precio mayorista
-            listPrice: 2499.00,
-            currency: 'MXN',
-            lineTotal: 43980.00,
-            description: 'Teclado Mecánico Keychron K2 - Red Switches / RGB',
-          },
-          {
-            variantId: mouse.variants[1].id,
-            qty: 20,
-            unitPrice: 1649.00, // Precio mayorista
-            listPrice: 1899.00,
-            currency: 'MXN',
-            lineTotal: 32980.00,
-            description: 'Mouse Logitech MX Master 3 - Gris',
-          },
-          {
-            variantId: webcam.variants[0].id,
-            qty: 15,
-            unitPrice: 1099.00, // Precio mayorista
-            listPrice: 1299.00,
-            currency: 'MXN',
-            lineTotal: 16485.00,
-            description: 'Webcam Logitech C920 - Estándar',
-          },
-        ],
-      },
-    },
-  });
-
-  await prisma.order.update({
-    where: { id: order2.id },
-    data: {
-      subtotal: 93445.00,
-      total: 93445.00,
-    },
-  });
-
-  // Pedido 3: Supermercados El Ahorro - Monitores
-  const order3 = await prisma.order.create({
-    data: {
-      code: 'PED-2025-003',
-      clientId: clients[2].id,
-      statusId: estados[2].id, // EN_CURSO
-      currency: 'MXN',
-      notes: 'Pedido para tiendas - entrega programada',
-      items: {
-        create: [
-          {
-            variantId: monitor.variants[0].id,
-            qty: 10,
-            unitPrice: 11999.00, // Precio con descuento
-            listPrice: 12999.00,
-            currency: 'MXN',
-            lineTotal: 119990.00,
-            description: 'Monitor LG UltraWide 34" - 2K 75Hz',
-          },
-          {
-            variantId: laptop.variants[1].id,
-            qty: 3,
-            unitPrice: 35999.00, // Precio estándar (más alto que el default de 28999)
-            listPrice: 35999.00,
-            currency: 'MXN',
-            lineTotal: 107997.00,
-            description: 'Laptop Dell XPS 15 - 32GB RAM / 1TB SSD',
-          },
-        ],
-      },
-    },
-  });
-
-  await prisma.order.update({
-    where: { id: order3.id },
-    data: {
-      subtotal: 227987.00,
-      total: 227987.00,
-    },
-  });
-
-  // Pedido 4: Tiendas Martínez - Mix de productos
-  const order4 = await prisma.order.create({
-    data: {
-      code: 'PED-2025-004',
-      clientId: clients[3].id,
-      statusId: estados[0].id, // COTIZADO
-      currency: 'MXN',
-      notes: 'Primera compra - precio estándar',
-      items: {
-        create: [
-          {
-            variantId: teclado.variants[1].id,
-            qty: 8,
-            unitPrice: 2499.00, // Precio lista
-            listPrice: 2499.00,
-            currency: 'MXN',
-            lineTotal: 19992.00,
-            description: 'Teclado Mecánico Keychron K2 - Blue Switches / RGB',
-          },
-          {
-            variantId: mouse.variants[0].id,
-            qty: 8,
-            unitPrice: 1899.00, // Precio lista
-            listPrice: 1899.00,
-            currency: 'MXN',
-            lineTotal: 15192.00,
-            description: 'Mouse Logitech MX Master 3 - Negro',
-          },
-          {
-            variantId: webcam.variants[0].id,
-            qty: 5,
-            unitPrice: 1299.00, // Precio lista
-            listPrice: 1299.00,
-            currency: 'MXN',
-            lineTotal: 6495.00,
-            description: 'Webcam Logitech C920 - Estándar',
-          },
-        ],
-      },
-    },
-  });
-
-  await prisma.order.update({
-    where: { id: order4.id },
-    data: {
-      subtotal: 41679.00,
-      total: 41679.00,
-    },
-  });
-
-  // Pedido 5: Abarrotes Don Pedro - Pedido pequeño
-  const order5 = await prisma.order.create({
-    data: {
-      code: 'PED-2025-005',
-      clientId: clients[4].id,
-      statusId: estados[3].id, // ENVIADO
-      currency: 'MXN',
-      notes: 'Entrega urgente - precio estándar + cargo extra',
-      items: {
-        create: [
-          {
-            variantId: teclado.variants[2].id,
-            qty: 3,
-            unitPrice: 2599.00, // Precio con recargo por urgencia
-            listPrice: 2499.00,
-            currency: 'MXN',
-            lineTotal: 7797.00,
-            description: 'Teclado Mecánico Keychron K2 - Brown Switches / White LED',
-          },
-          {
-            variantId: mouse.variants[1].id,
-            qty: 3,
-            unitPrice: 1949.00, // Precio con recargo
-            listPrice: 1899.00,
-            currency: 'MXN',
-            lineTotal: 5847.00,
-            description: 'Mouse Logitech MX Master 3 - Gris',
-          },
-        ],
-      },
-    },
-  });
-
-  await prisma.order.update({
-    where: { id: order5.id },
-    data: {
-      subtotal: 13644.00,
-      total: 13644.00,
-    },
-  });
-
-  // Pedido 6: Pedido histórico de Comercial López (precio diferente)
-  const order6 = await prisma.order.create({
-    data: {
-      code: 'PED-2024-099',
-      clientId: clients[0].id,
-      statusId: estados[3].id, // ENVIADO (pedido completado)
-      currency: 'MXN',
-      notes: 'Pedido del año pasado - historial de precios',
-      createdAt: new Date('2024-12-15'),
-      updatedAt: new Date('2024-12-20'),
-      items: {
-        create: [
-          {
-            variantId: laptop.variants[0].id,
-            qty: 3,
-            unitPrice: 27999.99, // Precio histórico diferente
-            listPrice: 29999.99, // Lista histórica más alta
-            currency: 'MXN',
-            lineTotal: 83999.97,
-            description: 'Laptop Dell XPS 15 - 16GB RAM / 512GB SSD',
-          },
-        ],
-      },
-    },
-  });
-
-  await prisma.order.update({
-    where: { id: order6.id },
-    data: {
-      subtotal: 83999.97,
-      total: 83999.97,
-    },
-  });
-
-  console.log('✅ 6 pedidos creados con historial de precios por cliente');
+    });
+    
+    await prisma.order.update({
+      where: { id: order1.id },
+      data: { subtotal: 500, total: 500 },
+    });
+  }
+  */
 
   // ======================================
   // RESUMEN
@@ -646,12 +399,14 @@ async function main() {
   console.log('='.repeat(50));
   console.log(`✅ Clientes: ${clients.length}`);
   console.log(`✅ Categorías: ${categorias.length}`);
-  console.log(`✅ Productos: 5`);
-  console.log(`✅ Variantes: ${allVariants.length}`);
+  
+  const totalProducts = await prisma.product.count();
+  const totalVariants = await prisma.productVariant.count();
+  console.log(`✅ Productos: ${totalProducts}`);
+  console.log(`✅ Variantes: ${totalVariants}`);
   console.log(`✅ Almacenes: 2`);
-  console.log(`✅ Stock creado para: ${allVariants.length * 2} combinaciones`);
+  console.log(`✅ Stock creado para: ${totalVariants * 2} combinaciones`);
   console.log(`✅ Estados de pedidos: ${estados.length}`);
-  console.log(`✅ Pedidos con historial de precios: 6`);
   console.log('='.repeat(50));
   console.log('\n✨ Seed completado exitosamente!\n');
 }
