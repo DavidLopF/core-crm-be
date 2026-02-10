@@ -49,8 +49,43 @@ export interface ProductWarehouseStockDto {
 export interface ProductListItemDto {
   id: number;
   name: string;
+  sku: string;
+  category: string | null;
+  categoryId: number | null;
   defaultPrice: number;
   currency: string | null;
+  totalStock: number;
+  status: 'Activo' | 'Inactivo';
+}
+
+/**
+ * Query params para filtrado y paginación de productos
+ */
+export interface ProductFiltersDto {
+  page?: number;
+  limit?: number;
+  search?: string;
+  categoryId?: number;
+  sku?: string;
+  isActive?: boolean;
+  minPrice?: number;
+  maxPrice?: number;
+  hasStock?: boolean;
+}
+
+/**
+ * Respuesta paginada de productos
+ */
+export interface PaginatedProductsDto {
+  data: ProductListItemDto[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
 }
 
 /**

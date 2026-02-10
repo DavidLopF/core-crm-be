@@ -20,3 +20,6 @@ pids
 logs
 
 logs/*.log
+
+
+logs/*.log.*
