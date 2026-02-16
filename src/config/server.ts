@@ -36,6 +36,18 @@ class Server {
     this.app.use(cors() as RequestHandler);
     this.app.use(morgan("dev") as RequestHandler);
     this.app.use(express.json() as RequestHandler);
+    this.app.use(express.urlencoded({ extended: true }) as RequestHandler);
+    this.healthCheck();
+  }
+
+  private async healthCheck(): Promise<void> {
+      this.app.get("/", (req, res) => {
+        res.status(200).json({
+          status: "ok",
+          uptime: process.uptime(),
+          timestamp: new Date(),
+        });
+      });
   }
 
   private async routes(): Promise<void> {
