@@ -3,7 +3,7 @@ const  ROUTE_PREFIX = '/api/';
 const ROUTES =[
     // 'dashboard' ,
     'products' ,
-    'inventory' ,
+    'orders' ,
     'clients' ,
     // 'orders' ,
     // 'users' ,

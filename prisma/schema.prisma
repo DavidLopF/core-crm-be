@@ -150,6 +150,8 @@ model Order {
   createdBy  User? @relation("order_created_by", fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   updatedBy  User? @relation("order_updated_by", fields: [updatedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
+  isDeleted  Boolean  @default(false) // Para eliminación lógica
+
   @@index([clientId])
   @@index([statusId])
   @@index([createdByUserId])

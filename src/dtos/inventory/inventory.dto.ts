@@ -21,7 +21,6 @@ export interface InventoryItemDto {
   barcode: string | null;
   category: string;
   stock: number;
-  stockStatus: 'En Stock' | 'Stock Bajo' | 'Sin Stock';
   price: number;
   currency: string | null;
   isActive: boolean;
@@ -42,9 +41,6 @@ export interface WarehouseStockDto {
  */
 export interface InventoryQueryParams {
   search?: string;
-  stockStatus?: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
-  page?: number;
-  limit?: number;
 }
 
 /**

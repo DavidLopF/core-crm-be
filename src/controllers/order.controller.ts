@@ -1,33 +1,36 @@
 import { Router, Request, Response } from 'express';
-import InventoryService from '../services/inventory.service';
+import {OrderService} from '../services'
 import { ApiResponse, ErrorResponse } from '../types';
 import { InventorySummaryDto, InventoryItemDto } from '../dtos';
 
 const router = Router();
 
-/**
- * GET /api/inventory/summary
- * Obtener estadísticas del inventario (métricas para las tarjetas superiores)
- */
-router.get('/summary', async (req: Request, res: Response) => {
-  try {
-    const summary = await InventoryService.getInventorySummary();
-    
-    const response: ApiResponse<InventorySummaryDto> = {
+router.put('/change-status/:orderId', async (req: Request, res: Response) => {
+  try{
+    const response = await OrderService.changeOrderStatus(
+      parseInt(req.params.orderId), 
+      req.body.newStatusCode, 
+      req.body.userId
+    );
+
+    const apiResponse: ApiResponse<null> = {
       success: true,
-      data: summary,
+      message: 'Status de la orden cambiado exitosamente',
+      data: null,
     };
-    
-    res.json(response);
-  } catch (error) {
+
+    res.status(200).json(apiResponse);
+
+  }catch(error){
     const errorResponse: ErrorResponse = {
       success: false,
-      message: 'Error al obtener resumen del inventario',
+      message: 'Error al cambiar el status de la orden',
       error: error instanceof Error ? error.message : 'Unknown error',
     };
     res.status(500).json(errorResponse);
   }
-});
+}); 
+
 
 /**
  * GET /api/inventory
@@ -40,16 +43,19 @@ router.get('/summary', async (req: Request, res: Response) => {
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { search, stockStatus, page, limit } = req.query;
+    const { search, page, limit } = req.query;
 
-    const result = await InventoryService.getInventoryList({
+    const result = await OrderService.getOrderList({
       search: search as string,
-      stockStatus: stockStatus as 'all' | 'in-stock' | 'low-stock' | 'out-of-stock',
-      page: page ? parseInt(page as string) : 1,
-      limit: limit ? parseInt(limit as string) : 10,
     });
 
-    res.json(result);
+    const response: ApiResponse<any[]> = {
+      success: true,
+      message: 'Inventario obtenido exitosamente',
+      data: result.data,
+    };
+
+    res.status(200).json(response);
   } catch (error) {
     const errorResponse: ErrorResponse = {
       success: false,

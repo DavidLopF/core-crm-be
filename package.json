@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "ts-node prisma/seed.ts",
+    "seed:orders": "ts-node prisma/seed-orders.ts",
     "seed:products": "ts-node prisma/seed-products-from-excel.ts",
     "inspect:excel": "ts-node prisma/inspect-excel.ts"
   },
