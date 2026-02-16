@@ -1,5 +1,11 @@
 import { loadEnvFile } from "node:process";
-loadEnvFile();
+import { existsSync } from "node:fs";
+
+// Solo cargar .env si existe (desarrollo local)
+if (existsSync(".env")) {
+  loadEnvFile();
+}
+
 import cors from "cors";
 import morgan from "morgan";
 import colors from "colors";
