@@ -146,3 +146,51 @@ export interface CreateProductResponseDto {
   variantsCreated: number;
   message: string;
 }
+
+// ============================================
+// DTOs para ACTUALIZAR productos
+// ============================================
+
+/**
+ * DTO para actualizar una variante existente o crear una nueva
+ */
+export interface UpdateProductVariantDto {
+  id?: number; // Si se envía, se actualiza la variante existente. Si no, se crea una nueva.
+  sku?: string;
+  barcode?: string;
+  variantType?: string;
+  variantValue?: string;
+  variantName?: string; // Alternativa: "Color: Verde" (ya formateado)
+  stock?: number; // Nuevo stock total (qtyOnHand)
+  initialStock?: number; // Alternativa a stock (para nuevas variantes)
+  warehouseId?: number;
+  isActive?: boolean; // Para desactivar variantes
+}
+
+/**
+ * DTO para actualizar un producto
+ */
+export interface UpdateProductDto {
+  name?: string;
+  description?: string;
+  categoryId?: number;
+  price?: number; // Precio de venta
+  defaultPrice?: number; // Alternativa a price
+  cost?: number; // Costo
+  currency?: string;
+  isActive?: boolean;
+  variants?: UpdateProductVariantDto[];
+}
+
+/**
+ * Respuesta al actualizar un producto
+ */
+export interface UpdateProductResponseDto {
+  id: number;
+  name: string;
+  category: string;
+  price: number;
+  variantsUpdated: number;
+  variantsCreated: number;
+  message: string;
+}

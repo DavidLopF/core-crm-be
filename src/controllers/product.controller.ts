@@ -8,7 +8,9 @@ import {
   ProductFiltersDto, 
   PaginatedProductsDto,
   CreateProductDto,
-  CreateProductResponseDto
+  CreateProductResponseDto,
+  UpdateProductDto,
+  UpdateProductResponseDto
 } from '../dtos';
 
 const router = Router();
@@ -294,6 +296,116 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json(errorResponse);
     }
     
+    res.status(500).json(errorResponse);
+  }
+});
+
+/**
+ * PUT /api/products/:id
+ * Actualizar un producto existente con sus variantes y stock
+ * 
+ * Body:
+ * {
+ *   "name": "Nombre actualizado",
+ *   "description": "Descripción actualizada",
+ *   "categoryId": 1,
+ *   "price": 200,
+ *   "cost": 100,
+ *   "currency": "MXN",
+ *   "isActive": true,
+ *   "variants": [
+ *     {
+ *       "id": 1,              // Variante existente - se actualiza
+ *       "variantName": "Color: Rojo",
+ *       "stock": 150
+ *     },
+ *     {
+ *       "variantName": "Color: Azul",  // Sin id - se crea nueva variante
+ *       "stock": 50,
+ *       "sku": "SKU-001-AZUL"
+ *     }
+ *   ]
+ * }
+ */
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    const productId = parseInt(req.params.id);
+
+    if (isNaN(productId)) {
+      const errorResponse: ErrorResponse = {
+        success: false,
+        message: 'ID de producto inválido',
+      };
+      return res.status(400).json(errorResponse);
+    }
+
+    const updateData: UpdateProductDto = req.body;
+
+    // Normalizar precio (aceptar price o defaultPrice)
+    if (updateData.price === undefined && updateData.defaultPrice !== undefined) {
+      updateData.price = updateData.defaultPrice;
+    }
+
+    // Validaciones básicas
+    if (updateData.name !== undefined && updateData.name.trim() === '') {
+      const errorResponse: ErrorResponse = {
+        success: false,
+        message: 'El nombre del producto no puede estar vacío',
+      };
+      return res.status(400).json(errorResponse);
+    }
+
+    if (updateData.price !== undefined && updateData.price < 0) {
+      const errorResponse: ErrorResponse = {
+        success: false,
+        message: 'El precio debe ser un número válido mayor o igual a 0',
+      };
+      return res.status(400).json(errorResponse);
+    }
+
+    // Validar variantes si se envían
+    if (updateData.variants && updateData.variants.length > 0) {
+      for (let i = 0; i < updateData.variants.length; i++) {
+        const variant = updateData.variants[i];
+        const stock = variant.stock ?? variant.initialStock;
+
+        if (stock !== undefined && stock < 0) {
+          const errorResponse: ErrorResponse = {
+            success: false,
+            message: `La variante ${i + 1} tiene un stock inválido (debe ser >= 0)`,
+          };
+          return res.status(400).json(errorResponse);
+        }
+      }
+    }
+
+    // Actualizar el producto
+    const result = await ProductService.updateProduct(productId, updateData);
+
+    const response: ApiResponse<UpdateProductResponseDto> = {
+      success: true,
+      data: result,
+    };
+    res.status(200).json(response);
+
+  } catch (error) {
+    const errorResponse: ErrorResponse = {
+      success: false,
+      message: 'Error al actualizar el producto',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+
+    // Errores de validación de negocio
+    if (error instanceof Error && (
+      error.message.includes('no encontrado') ||
+      error.message.includes('no encontrada') ||
+      error.message.includes('no pertenece') ||
+      error.message.includes('ya está en uso') ||
+      error.message.includes('No hay almacenes')
+    )) {
+      return res.status(400).json(errorResponse);
+    }
+
     res.status(500).json(errorResponse);
   }
 });

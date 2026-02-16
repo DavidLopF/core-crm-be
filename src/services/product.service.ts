@@ -6,7 +6,9 @@ import {
   ProductFiltersDto, 
   PaginatedProductsDto,
   CreateProductDto,
-  CreateProductResponseDto
+  CreateProductResponseDto,
+  UpdateProductDto,
+  UpdateProductResponseDto
 } from "../dtos";
 
 class ProductService {
@@ -162,6 +164,8 @@ class ProductService {
     // Construir condiciones de filtrado
     const where: any = {};
 
+    
+
     // Filtro de estado activo/inactivo
     if (isActive !== undefined) {
       where.isActive = isActive;
@@ -238,7 +242,7 @@ class ProductService {
             },
           },
         },
-        orderBy: { name: 'asc' },
+        orderBy: { createdAt: 'desc' },
       }),
       prisma.product.count({ where }),
     ]);
@@ -396,6 +400,202 @@ class ProductService {
       price: Number(product.defaultPrice),
       variantsCreated: data.variants.length,
       message: `Producto "${product.name}" creado exitosamente con ${data.variants.length} variante(s)`,
+    };
+  }
+
+  /**
+   * Actualizar un producto existente con sus variantes y stock
+   */
+  async updateProduct(productId: number, data: UpdateProductDto): Promise<UpdateProductResponseDto> {
+    // Verificar que el producto exista
+    const existingProduct = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: true,
+        variants: {
+          include: {
+            stocks: true,
+          },
+        },
+      },
+    });
+
+    if (!existingProduct) {
+      throw new Error(`Producto con ID ${productId} no encontrado`);
+    }
+
+    // Si se cambia la categoría, validar que exista
+    let categoryName = existingProduct.category?.name || 'Sin categoría';
+    if (data.categoryId !== undefined && data.categoryId !== existingProduct.categoryId) {
+      const category = await prisma.category.findUnique({
+        where: { id: data.categoryId },
+      });
+      if (!category) {
+        throw new Error(`Categoría con ID ${data.categoryId} no encontrada`);
+      }
+      categoryName = category.name;
+    }
+
+    // Obtener almacén por defecto para nuevas variantes
+    const defaultWarehouse = await prisma.warehouse.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'asc' },
+    });
+
+    if (!defaultWarehouse) {
+      throw new Error('No hay almacenes activos en el sistema');
+    }
+
+    let variantsUpdated = 0;
+    let variantsCreated = 0;
+
+    const updatedProduct = await prisma.$transaction(async (tx) => {
+      // 1. Actualizar datos del producto
+      const productPrice = data.price ?? data.defaultPrice;
+
+      const productUpdateData: any = {};
+      if (data.name !== undefined) productUpdateData.name = data.name;
+      if (data.description !== undefined) productUpdateData.description = data.description || null;
+      if (data.categoryId !== undefined) productUpdateData.categoryId = data.categoryId;
+      if (productPrice !== undefined) productUpdateData.defaultPrice = productPrice;
+      if (data.currency !== undefined) productUpdateData.currency = data.currency;
+      if (data.isActive !== undefined) productUpdateData.isActive = data.isActive;
+
+      const product = await tx.product.update({
+        where: { id: productId },
+        data: productUpdateData,
+      });
+
+      // 2. Actualizar variantes si se proporcionan
+      if (data.variants && data.variants.length > 0) {
+        for (const variant of data.variants) {
+          if (variant.id) {
+            // Actualizar variante existente
+            const existingVariant = existingProduct.variants.find(v => v.id === variant.id);
+            if (!existingVariant) {
+              throw new Error(`Variante con ID ${variant.id} no pertenece a este producto`);
+            }
+
+            // Actualizar datos de la variante
+            const variantUpdateData: any = {};
+            if (variant.sku !== undefined) {
+              // Verificar que el nuevo SKU no esté en uso por otra variante
+              const skuInUse = await tx.productVariant.findFirst({
+                where: {
+                  sku: variant.sku,
+                  id: { not: variant.id },
+                },
+              });
+              if (skuInUse) {
+                throw new Error(`El SKU "${variant.sku}" ya está en uso`);
+              }
+              variantUpdateData.sku = variant.sku;
+            }
+            if (variant.barcode !== undefined) variantUpdateData.barcode = variant.barcode || null;
+            if (variant.variantName !== undefined) {
+              variantUpdateData.variantName = variant.variantName;
+            } else if (variant.variantType && variant.variantValue) {
+              variantUpdateData.variantName = `${variant.variantType}: ${variant.variantValue}`;
+            }
+            if (variant.isActive !== undefined) variantUpdateData.isActive = variant.isActive;
+
+            if (Object.keys(variantUpdateData).length > 0) {
+              await tx.productVariant.update({
+                where: { id: variant.id },
+                data: variantUpdateData,
+              });
+            }
+
+            // Actualizar stock si se proporciona
+            const newStock = variant.stock ?? variant.initialStock;
+            if (newStock !== undefined) {
+              const warehouseId = variant.warehouseId || defaultWarehouse.id;
+
+              // Buscar stock existente para esta variante/warehouse
+              const existingStock = await tx.inventoryStock.findUnique({
+                where: {
+                  variantId_warehouseId: {
+                    variantId: variant.id,
+                    warehouseId: warehouseId,
+                  },
+                },
+              });
+
+              if (existingStock) {
+                await tx.inventoryStock.update({
+                  where: { id: existingStock.id },
+                  data: { qtyOnHand: newStock },
+                });
+              } else {
+                await tx.inventoryStock.create({
+                  data: {
+                    variantId: variant.id,
+                    warehouseId: warehouseId,
+                    qtyOnHand: newStock,
+                    qtyReserved: 0,
+                  },
+                });
+              }
+            }
+
+            variantsUpdated++;
+          } else {
+            // Crear nueva variante
+            const variantSku = variant.sku || `${existingProduct.variants[0]?.sku?.split('-')[0] || 'PROD'}-${existingProduct.variants.length + variantsCreated + 1}`;
+
+            // Verificar que el SKU no esté en uso
+            const skuInUse = await tx.productVariant.findFirst({
+              where: { sku: variantSku },
+            });
+            if (skuInUse) {
+              throw new Error(`El SKU "${variantSku}" ya está en uso`);
+            }
+
+            const variantName = variant.variantName ||
+              (variant.variantType && variant.variantValue
+                ? `${variant.variantType}: ${variant.variantValue}`
+                : `Variante ${existingProduct.variants.length + variantsCreated + 1}`);
+
+            const initialStock = variant.stock ?? variant.initialStock ?? 0;
+            const warehouseId = variant.warehouseId || defaultWarehouse.id;
+
+            const newVariant = await tx.productVariant.create({
+              data: {
+                productId: productId,
+                sku: variantSku,
+                barcode: variant.barcode || null,
+                variantName: variantName,
+                isActive: variant.isActive ?? true,
+              },
+            });
+
+            await tx.inventoryStock.create({
+              data: {
+                variantId: newVariant.id,
+                warehouseId: warehouseId,
+                qtyOnHand: initialStock,
+                qtyReserved: 0,
+              },
+            });
+
+            variantsCreated++;
+          }
+        }
+      }
+
+      return product;
+    });
+
+    const finalPrice = Number(updatedProduct.defaultPrice);
+
+    return {
+      id: updatedProduct.id,
+      name: updatedProduct.name,
+      category: categoryName,
+      price: finalPrice,
+      variantsUpdated,
+      variantsCreated,
+      message: `Producto "${updatedProduct.name}" actualizado exitosamente (${variantsUpdated} variante(s) actualizadas, ${variantsCreated} variante(s) creadas)`,
     };
   }
 }
