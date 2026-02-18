@@ -1,7 +1,9 @@
 import { Router, Request, Response } from 'express';
 import ClientService from '../services/client.service';
-import { ListResponse, ErrorResponse } from '../types';
-import { ClientListItemDto, PriceHistoryDto } from '../dtos';
+import { PaginatedResponse, ErrorResponse, ListResponse } from '../types';
+import { ClientListItemDto, PriceHistoryDto, ClientDto } from '../dtos';
+import { Logger } from 'winston';
+import { printError } from '../shared/utils/logger';
 
 const router = Router();
 
@@ -11,18 +13,57 @@ const router = Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const clients = await ClientService.getAllClients();
+    // Parse query params
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const limit = req.query.limit ? parseInt(String(req.query.limit)) : 10;
+    const search = req.query.search ? String(req.query.search) : undefined;
+    const filters = {
+      active: req.query.active ? String(req.query.active) === 'true' : undefined,
+      inactive: req.query.inactive ? String(req.query.inactive) === 'true' : undefined,
+    }
+    const { data, total } = await ClientService.getClients(page, limit, search, filters);
 
-    const response: ListResponse<ClientListItemDto> = {
-      success: true,
-      data: clients,
-      count: clients.length,
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    const pagination = {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
     };
+
+    const response: PaginatedResponse<ClientDto> = {
+      success: true,
+      data,
+      pagination,
+    };
+
     res.json(response);
   } catch (error) {
+    printError('Error en GET /api/clients', error);
     const errorResponse: ErrorResponse = {
       success: false,
       message: 'Error al obtener clientes',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+router.get('/statistics', async (req: Request, res: Response) => {
+  try {
+    const stats = await ClientService.getClientStatistics();
+    const response = {
+      success: true,
+      data: stats,
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    const errorResponse: ErrorResponse = {
+      success: false,
+      message: 'Error al obtener estadísticas de clientes',
       error: error instanceof Error ? error.message : 'Unknown error',
     };
     res.status(500).json(errorResponse);

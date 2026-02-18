@@ -25,3 +25,15 @@ export interface PriceHistoryDto {
   lineTotal: number;
   currency: string | null;
 }
+
+/**
+ * DTO completo de cliente (para listas paginadas con más detalles)
+ */
+export interface ClientDto {
+  id: number;
+  name: string;
+  document?: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  totalSpent: number;
+}

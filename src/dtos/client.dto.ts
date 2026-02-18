@@ -7,6 +7,17 @@ export interface ClientListItemDto {
 }
 
 /**
+ * DTO completo de cliente (para listas paginadas con más detalles)
+ */
+export interface ClientDto {
+  id: number;
+  name: string;
+  document?: string | null;
+  isActive: boolean;
+  createdAt: Date;
+}
+
+/**
  * DTO para historial de precios
  */
 export interface PriceHistoryDto {
