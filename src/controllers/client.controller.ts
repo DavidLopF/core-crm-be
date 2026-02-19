@@ -52,6 +52,14 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+
+
+
+ 
+/**
+ * GET /api/clients/statistics
+ * Obtener estadísticas generales de clientes
+ */
 router.get('/statistics', async (req: Request, res: Response) => {
   try {
     const stats = await ClientService.getClientStatistics();
@@ -105,4 +113,45 @@ router.get('/:clientId/price-history/:productId', async (req: Request, res: Resp
   }
 });
 
+
+/**
+ * GET /api/clients/:clientId
+ * Obtener detalles de un cliente específico
+ */
+router.get('/:clientId', async (req: Request, res: Response) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+
+    if (isNaN(clientId)) {
+      const errorResponse: ErrorResponse = {
+        success: false,
+        message: 'ID de cliente inválido',
+      };
+      return res.status(400).json(errorResponse);
+    }
+
+    const client = await ClientService.getClientById(clientId);
+
+    if (!client) {
+      const errorResponse: ErrorResponse = {
+        success: false,
+        message: 'Cliente no encontrado',
+      };
+      return res.status(404).json(errorResponse);
+    }
+
+    const response = {
+      success: true,
+      data: client,
+    };
+    res.json(response);
+  } catch (error) { 
+    const errorResponse: ErrorResponse = {
+      success: false,
+      message: 'Error al obtener cliente',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
 export default router;

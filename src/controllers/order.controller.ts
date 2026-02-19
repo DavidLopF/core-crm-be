@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import {OrderService} from '../services'
 import { ApiResponse, ErrorResponse } from '../types';
 import { InventorySummaryDto, InventoryItemDto } from '../dtos';
+import { printError } from '../shared/utils/logger';
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.put('/change-status/:orderId', async (req: Request, res: Response) => {
     res.status(200).json(apiResponse);
 
   }catch(error){
+    printError('Error en PUT /api/orders/change-status/:orderId', error);
     const errorResponse: ErrorResponse = {
       success: false,
       message: 'Error al cambiar el status de la orden',

@@ -2,6 +2,49 @@ import { prisma } from "../config/prisma";
 import { ClientListItemDto, PriceHistoryDto, ClientDto } from "../dtos";
 
 class ClientService {
+
+  public async getClientById(clientId: number): Promise<any | null> {
+    try{
+      const client = await prisma.client.findUnique({
+        where: { id: clientId },
+        select: {
+          id: true,
+          name: true,
+          document: true,
+          isActive: true,
+          createdAt: true,
+        },
+      });
+
+      if (!client) {
+        return null;
+      }
+
+      const hystoricalPrices = await this.getClientPriceHistory(client.id, 0);
+
+      const totalSpent = await this.getTotalSpent(client.id);
+      const totalOrders = await prisma.order.count({
+        where: {
+          clientId: client.id,
+          status: {
+            code: {
+              notIn: ["COTIZADO", "CANCELADO"],
+            },
+          },
+        },
+      });
+
+      return {
+        ...client,
+        totalSpent,
+        totalOrders,
+        hystoricalPrices,
+      };
+    }catch(error){
+      throw new Error("Error to get client by id: " + (error instanceof Error ? error.message : "Unknown error"));
+    }
+  }
+
   public async getClientStatistics(): Promise<any> {
     try {
       const totalClients = await prisma.client.count();
